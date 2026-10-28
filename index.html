@@ -1,0 +1,1421 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>气温行情</title>
+<style>
+:root {
+  --bg: #000;
+  --panel: #08080a;
+  --raise: #121215;
+  --hover: rgba(255,255,255,.05);
+  --sel: rgba(255,255,255,.08);
+  --line: rgba(255,255,255,.08);
+  --line-2: rgba(255,255,255,.14);
+  --ink: #f2f2f4;
+  --ink-2: rgba(242,242,244,.68);
+  --ink-3: rgba(242,242,244,.5);
+  --up: #f0444e;
+  --down: #1db971;
+  --flat: rgba(242,242,244,.68);
+  --rain: #4a8cff;
+  --ma5: #e6e6e9;
+  --ma10: #f1b23c;
+  --ma20: #b27dff;
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+}
+html.swap { --up: #1db971; --down: #f0444e; }
+html:lang(ja) { --sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", system-ui, sans-serif; }
+html:lang(en) { --sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif; }
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--sans); }
+body { overflow: hidden; font-size: 13px; -webkit-font-smoothing: antialiased; }
+::selection { background: rgba(255,255,255,.2); }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid rgba(255,255,255,.7); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+.flat { color: var(--flat); }
+
+.app { display: grid; grid-template-columns: 320px 1fr; height: 100vh; min-width: 1080px; }
+
+/* ---- 自选列表 ---- */
+.side { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--panel); }
+.brand { display: flex; align-items: baseline; justify-content: space-between; padding: 22px 20px 14px; }
+.brand h1 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: .02em; }
+.search { position: relative; padding: 0 14px 12px; }
+.search input {
+  width: 100%; height: 36px; padding: 0 12px; border-radius: 9px;
+  background: var(--raise); border: 1px solid var(--line); caret-color: var(--ink);
+}
+.search input::placeholder { color: var(--ink-3); }
+.search input:focus { outline: none; border-color: var(--line-2); background: #17171b; }
+.results {
+  position: absolute; z-index: 5; left: 14px; right: 14px; top: 42px; margin: 0; padding: 4px; list-style: none;
+  background: #17171b; border: 1px solid var(--line-2); border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0,0,0,.6);
+}
+.results li { padding: 8px 10px; border-radius: 7px; cursor: pointer; display: flex; justify-content: space-between; gap: 10px; }
+.results li.on, .results li:hover { background: rgba(255,255,255,.07); }
+.results small { color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.results .msg { color: var(--ink-3); cursor: default; }
+.results .msg:hover { background: none; }
+
+.list-head {
+  display: grid; grid-template-columns: 1fr 64px 58px 66px; gap: 8px; padding: 6px 20px 6px;
+  font-size: 11px; color: var(--ink-3); border-bottom: 1px solid var(--line);
+}
+.list-head span:nth-child(n+3) { text-align: right; }
+.list { flex: 1; overflow-y: auto; padding: 6px 6px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.14) transparent; }
+.row {
+  position: relative; width: 100%; display: grid; grid-template-columns: 1fr 64px 58px 66px; gap: 8px; align-items: center;
+  padding: 10px 14px; border: 0; border-radius: 10px; background: none; text-align: left;
+}
+.row:hover { background: var(--hover); }
+.row.on { background: var(--sel); }
+.row .nm { min-width: 0; }
+.row .nm b { display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .nm i { font-style: normal; font-size: 11px; color: var(--ink-3); letter-spacing: .05em; }
+.row canvas { width: 64px; height: 26px; }
+.row .px { text-align: right; font-size: 15px; font-weight: 600; }
+.row .chg {
+  justify-self: end; min-width: 60px; padding: 4px 6px; border-radius: 6px; text-align: center;
+  font-size: 12px; font-weight: 650; color: #fff; background: rgba(255,255,255,.1);
+}
+.row .chg.up { background: var(--up); color: #fff; }
+.row .chg.down { background: var(--down); color: #fff; }
+.row .del {
+  position: absolute; right: -2px; top: 50%; translate: 0 -50%; width: 22px; height: 22px; padding: 0;
+  display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--line-2);
+  background: #1b1b20; color: var(--ink-2); opacity: 0; transition: opacity .15s;
+}
+.row:hover .del, .row .del:focus-visible { opacity: 1; }
+.row .del:hover { color: var(--ink); background: #26262c; }
+.empty-list { padding: 28px 20px; color: var(--ink-3); line-height: 1.7; }
+
+.side-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 20px 14px; border-top: 1px solid var(--line); font-size: 11px; color: var(--ink-3);
+}
+.seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--raise); border: 1px solid var(--line); }
+.seg button {
+  height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--ink-2); font-size: 11px;
+}
+.seg button:hover { color: var(--ink); }
+.seg button[aria-checked="true"] { background: #26262c; color: var(--ink); font-weight: 600; }
+
+/* ---- 主区 ---- */
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 22px 32px 18px; }
+.quote { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.title b { font-size: 26px; font-weight: 650; letter-spacing: .01em; }
+.title .code { margin-left: 10px; font-size: 13px; color: var(--ink-3); letter-spacing: .06em; }
+.title .meta { margin-top: 6px; font-size: 12px; color: var(--ink-3); }
+.title .meta .live { display: inline-flex; align-items: center; gap: 6px; }
+.title .meta .live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #1db971; }
+.title .meta .live.stale::before { background: #f1b23c; }
+.price { text-align: right; }
+.price .big { font-size: 46px; font-weight: 650; line-height: 1; letter-spacing: -.01em; }
+.price .sub { margin-top: 8px; font-size: 15px; font-weight: 600; }
+.price .sub small { margin-left: 8px; font-size: 12px; font-weight: 400; color: var(--ink-3); }
+
+.stats {
+  display: grid; grid-template-columns: repeat(7, 1fr); margin: 20px 0 16px;
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.stat { padding: 10px 0 11px; }
+.stat span { display: block; font-size: 11px; color: var(--ink-3); margin-bottom: 4px; }
+.stat b { font-size: 15px; font-weight: 600; }
+.stat small { margin-left: 6px; font-size: 11px; color: var(--ink-3); font-weight: 400; }
+
+.chart-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+.tabs { display: inline-flex; padding: 3px; border-radius: 9px; background: var(--raise); border: 1px solid var(--line); }
+.tabs button {
+  min-width: 52px; height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: none; color: var(--ink-2); font-size: 12px;
+}
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { background: #26262c; color: var(--ink); font-weight: 600; }
+.hint { font-size: 11px; color: var(--ink-3); }
+
+.legend { min-height: 40px; font-size: 12px; color: var(--ink-3); line-height: 20px; }
+.legend .l1 b, .legend .l2 b { font-weight: 600; margin-right: 14px; margin-left: 3px; }
+.legend .l1 .d { color: var(--ink); margin-right: 16px; font-weight: 600; }
+.legend .m5 { color: var(--ma5); } .legend .m10 { color: var(--ma10); } .legend .m20 { color: var(--ma20); }
+.legend .rain { color: var(--rain); }
+
+.chart-wrap { position: relative; flex: 1; min-height: 260px; border-top: 1px solid var(--line); }
+#chart { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+#chart:focus-visible { outline-offset: -2px; }
+.chart-msg {
+  position: absolute; left: 0; right: 60px; top: 40%; text-align: center; color: var(--ink-3); pointer-events: none;
+}
+
+.toast {
+  position: fixed; left: 50%; bottom: 26px; translate: -50% 12px; display: flex; gap: 14px; align-items: center;
+  padding: 10px 12px 10px 16px; border-radius: 10px; background: #1b1b20; border: 1px solid var(--line-2);
+  box-shadow: 0 18px 40px rgba(0,0,0,.6); opacity: 0; visibility: hidden;
+  transition: opacity .2s, translate .25s cubic-bezier(.2,.8,.2,1), visibility 0s .25s;
+}
+.toast.show { opacity: 1; translate: -50% 0; visibility: visible; transition: opacity .2s, translate .25s cubic-bezier(.2,.8,.2,1); }
+.toast button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line-2); background: none; font-size: 12px; }
+.toast button:hover { background: var(--hover); }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><h1 data-t="title">气温行情</h1></div>
+    <div class="search">
+      <input id="q" type="search" data-t-ph="search" data-t-aria="searchLabel" autocomplete="off" spellcheck="false"
+             role="combobox" aria-expanded="false" aria-controls="results">
+      <ul class="results" id="results" role="listbox" hidden></ul>
+    </div>
+    <div class="list-head"><span data-t="headCity"></span><span data-t="headToday"></span><span data-t="headLast"></span><span data-t="headChg"></span></div>
+    <div class="list" id="list" role="listbox" data-t-aria="watchLabel"></div>
+    <div class="side-foot">
+      <span id="lang-label" data-t="lang"></span>
+      <div class="seg" id="lang" role="radiogroup" aria-labelledby="lang-label"></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <section class="quote">
+      <div class="title">
+        <div><b id="t-name">—</b><span class="code" id="t-code"></span></div>
+        <div class="meta"><span class="live" id="t-live">连接中</span> <span id="t-meta"></span></div>
+      </div>
+      <div class="price">
+        <div class="big num" id="p-big">—</div>
+        <div class="sub num" id="p-sub">&nbsp;</div>
+      </div>
+    </section>
+
+    <section class="stats" id="stats"></section>
+
+    <div class="chart-bar">
+      <div class="tabs" role="tablist" data-t-aria="period">
+        <button role="tab" data-mode="intra"></button>
+        <button role="tab" data-mode="day"></button>
+        <button role="tab" data-mode="week"></button>
+        <button role="tab" data-mode="month"></button>
+        <button role="tab" data-mode="year"></button>
+      </div>
+      <span class="hint" id="hint"></span>
+    </div>
+    <div class="legend num" id="legend"></div>
+    <div class="chart-wrap">
+      <canvas id="chart" tabindex="0" role="img" data-t-aria="chartLabel"></canvas>
+      <div class="chart-msg" id="chart-msg" hidden></div>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toast-text"></span><button id="toast-btn" type="button" data-t="undo" hidden></button></div>
+
+<script>
+"use strict";
+
+// ================= 配置 =================
+const HIST_START = "1940-01-01";
+const HIST_YEAR = HIST_START.slice(0, 4);
+const CHUNK_YEARS = 4, CHUNK_PARALLEL = 5;
+const DAY_START = 6;   // 每天 6 点开盘，次日 5 点收盘
+const HIST_V = 2;      // 交易日定义变了，旧缓存作废
+const REFRESH_MS = 10 * 60 * 1000;
+const DEFAULT_WATCH = [
+  { id: "kyo", code: "KYO", lat: 35.0116, lon: 135.7681, names: { zh: "京都", ja: "京都", en: "Kyoto" }, countries: { zh: "日本", ja: "日本", en: "Japan" } },
+  { id: "tyo", code: "TYO", lat: 35.6895, lon: 139.6917, names: { zh: "东京", ja: "東京", en: "Tokyo" }, countries: { zh: "日本", ja: "日本", en: "Japan" } },
+  { id: "bjs", code: "BJS", lat: 39.9042, lon: 116.4074, names: { zh: "北京", ja: "北京", en: "Beijing" }, countries: { zh: "中国", ja: "中国", en: "China" } },
+  { id: "sha", code: "SHA", lat: 31.2304, lon: 121.4737, names: { zh: "上海", ja: "上海", en: "Shanghai" }, countries: { zh: "中国", ja: "中国", en: "China" } },
+  { id: "sel", code: "SEL", lat: 37.5665, lon: 126.978, names: { zh: "首尔", ja: "ソウル", en: "Seoul" }, countries: { zh: "韩国", ja: "韓国", en: "South Korea" } },
+  { id: "nyc", code: "NYC", lat: 40.7128, lon: -74.006, names: { zh: "纽约", ja: "ニューヨーク", en: "New York" }, countries: { zh: "美国", ja: "アメリカ", en: "United States" } },
+  { id: "lon", code: "LON", lat: 51.5074, lon: -0.1278, names: { zh: "伦敦", ja: "ロンドン", en: "London" }, countries: { zh: "英国", ja: "イギリス", en: "United Kingdom" } },
+  { id: "syd", code: "SYD", lat: -33.8688, lon: 151.2093, names: { zh: "悉尼", ja: "シドニー", en: "Sydney" }, countries: { zh: "澳大利亚", ja: "オーストラリア", en: "Australia" } },
+];
+const MODES = {
+  intra: {},
+  day:   { count: 120, min: 20, max: 2400 },
+  week:  { count: 104, min: 20, max: 1200 },
+  month: { count: 96,  min: 12, max: 1200 },
+  year:  { min: 8, fixed: true },
+};
+const MA = [[5, "--ma5"], [10, "--ma10"], [20, "--ma20"]];
+const LANGS = { zh: "中文", ja: "日本語", en: "English" };
+const HTML_LANG = { zh: "zh-CN", ja: "ja", en: "en" };
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const I18N = {
+  zh: {
+    title: "气温行情", search: "添加城市，比如 札幌 / Paris", searchLabel: "搜索城市", watchLabel: "自选城市",
+    headCity: "城市", headToday: "今日", headLast: "最新", headChg: "涨跌", lang: "语言", period: "周期", chartLabel: "气温走势图", undo: "撤销",
+    tabs: { intra: "分时", day: "日K", week: "周K", month: "月K", year: "年K" },
+    week: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+    connecting: "连接中", updated: "更新于 {t}", offline: "现在离线", local: "当地 {t}", vsPrev: "较昨收", vsYday: "较昨天同时刻",
+    open: "今开", high: "最高", low: "最低", precipToday: "今日降水", yHigh: "一年最高", yLow: "一年最低", monthAvg: "本月均温",
+    loading: "正在下载 {y} 年以来的历史数据 {d}/{n}，先画出最近的年份",
+    hintIntra: "6 点开盘，次日 5 点收盘；虚线中轴是昨收", hintYear: "{y} 年至今 · 柱子是全年降水量", hintK: "滚轮缩放 · 拖动平移 · 柱子是降水量",
+    o: "开", h: "高", l: "低", c: "收", chg: "涨跌", range: "振幅", precip: "降水", live: "进行中",
+    temp: "气温", latest: "最新", forecast: "预报", prevClose: "昨收", intraNote: "实线是已经发生的，虚线是今天剩下时间的预报",
+    dayFmt: "{d} {w}", weekOf: "{d} 当周", monthFmt: "{y}年{m}月", yearFmt: "{y}年", axisMonth: "{m}月",
+    noCity: "先在左边添加一个城市", fetching: "正在获取数据…", noData: "还没有数据", noToday: "今天还没有数据",
+    emptyList: "自选是空的。在上面搜一个城市加进来。", searching: "搜索中…", notFound: "没找到「{q}」，换个写法试试，比如英文名", searchFail: "搜索失败，检查一下网络",
+    removed: "已移除 {n}", remove: "移除 {n}", already: "{n} 已经在自选里了", liveFail: "实时数据获取失败，稍后自动重试",
+    offlineToast: "连不上 Open-Meteo，先显示上次缓存的数据", histFail: "{n} 有 {k} 段历史数据没下载成功，下次打开会自动补上",
+  },
+  ja: {
+    title: "気温相場", search: "都市を追加（例：札幌 / Paris）", searchLabel: "都市を検索", watchLabel: "ウォッチリスト",
+    headCity: "都市", headToday: "今日", headLast: "現在", headChg: "前日比", lang: "言語", period: "期間", chartLabel: "気温チャート", undo: "元に戻す",
+    tabs: { intra: "日中", day: "日足", week: "週足", month: "月足", year: "年足" },
+    week: ["日", "月", "火", "水", "木", "金", "土"],
+    connecting: "接続中", updated: "{t} 更新", offline: "オフライン", local: "現地 {t}", vsPrev: "前日終値比", vsYday: "前日同時刻比",
+    open: "始値", high: "高値", low: "安値", precipToday: "今日の降水", yHigh: "年間高値", yLow: "年間安値", monthAvg: "今月の平均",
+    loading: "{y}年以降のデータを取得中 {d}/{n}（新しい年から表示）",
+    hintIntra: "6時に始値、翌5時に終値。中央の点線は前日終値", hintYear: "{y}年〜現在・棒は年間降水量", hintK: "ホイールで拡大縮小・ドラッグで移動・棒は降水量",
+    o: "始", h: "高", l: "安", c: "終", chg: "前期比", range: "値幅", precip: "降水", live: "進行中",
+    temp: "気温", latest: "最新", forecast: "予報", prevClose: "前日終値", intraNote: "実線はこれまで、点線は今日の残りの予報",
+    dayFmt: "{d}（{w}）", weekOf: "{d} の週", monthFmt: "{y}年{m}月", yearFmt: "{y}年", axisMonth: "{m}月",
+    noCity: "左のリストに都市を追加してください", fetching: "データを取得中…", noData: "データがありません", noToday: "今日のデータはまだありません",
+    emptyList: "ウォッチリストは空です。上の検索から都市を追加してください。", searching: "検索中…", notFound: "「{q}」は見つかりませんでした。英語名でも試してみてください", searchFail: "検索できませんでした。ネットワークを確認してください",
+    removed: "{n} を削除しました", remove: "{n} を削除", already: "{n} はすでにリストにあります", liveFail: "最新データを取得できませんでした。あとで自動で再試行します",
+    offlineToast: "Open-Meteo に接続できません。前回のデータを表示しています", histFail: "{n} の履歴データ {k} 区間を取得できませんでした。次回開いたときに自動で補います",
+  },
+  en: {
+    title: "Temperature Market", search: "Add a city, e.g. Sapporo / Paris", searchLabel: "Search cities", watchLabel: "Watchlist",
+    headCity: "City", headToday: "Today", headLast: "Last", headChg: "Chg", lang: "Language", period: "Period", chartLabel: "Temperature chart", undo: "Undo",
+    tabs: { intra: "Intraday", day: "Daily", week: "Weekly", month: "Monthly", year: "Yearly" },
+    week: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    connecting: "Connecting", updated: "Updated {t}", offline: "offline", local: "Local {t}", vsPrev: "vs prev close", vsYday: "vs this time yesterday",
+    open: "Open", high: "High", low: "Low", precipToday: "Precip today", yHigh: "1Y high", yLow: "1Y low", monthAvg: "Month avg",
+    loading: "Downloading history since {y} {d}/{n} — recent years first",
+    hintIntra: "Opens 06:00, closes 05:00 next day; dashed center line = prev close", hintYear: "{y}–now · bars are annual precipitation", hintK: "Scroll to zoom · drag to pan · bars are precipitation",
+    o: "O", h: "H", l: "L", c: "C", chg: "Chg", range: "Range", precip: "Precip", live: "in progress",
+    temp: "Temp", latest: "latest", forecast: "forecast", prevClose: "Prev close", intraNote: "Solid line so far, dashed line is the forecast for the rest of today",
+    dayFmt: "{w} {d}", weekOf: "Week of {d}", monthFmt: "{M} {y}", yearFmt: "{y}", axisMonth: "{M}",
+    noCity: "Add a city on the left", fetching: "Loading…", noData: "No data yet", noToday: "No data for today yet",
+    emptyList: "Your watchlist is empty. Search above to add a city.", searching: "Searching…", notFound: "No match for “{q}”. Try the English name.", searchFail: "Search failed. Check your connection.",
+    removed: "Removed {n}", remove: "Remove {n}", already: "{n} is already in your list", liveFail: "Couldn't fetch live data. Will retry automatically.",
+    offlineToast: "Can't reach Open-Meteo. Showing cached data.", histFail: "{k} history chunks for {n} failed. They'll be filled in next time.",
+  },
+};
+function t(key, vars) {
+  const v = I18N[S.prefs.lang]?.[key] ?? I18N.zh[key];
+  return typeof v === "string" && vars ? v.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "") : v;
+}
+const cname = c => c.names?.[S.prefs.lang] || c.names?.en || c.name || c.code;
+const ccountry = c => c.countries?.[S.prefs.lang] || c.countries?.en || c.country || "";
+const K = { watch: "tq.watch.v1", live: "tq.live.v1", prefs: "tq.prefs.v1" };
+
+// ================= 状态 =================
+const S = {
+  watch: [], sel: null, mode: "day",
+  live: {},          // id -> { time, cur, off, at, hourly: { time[], t[], p[] } }
+  hist: {},          // id -> { start, end, o[], h[], l[], c[], p[] }
+  histLoading: {}, histChecked: {},
+  views: {},         // mode -> { count, offset }
+  hover: null, drag: null,
+  ver: 0, memo: new Map(),
+  online: true, prefs: { lang: "zh" },
+};
+const $ = s => document.querySelector(s);
+
+// ================= 工具 =================
+const store = {
+  get(k, f) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : f; } catch { return f; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+const dayNum = s => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) / 864e5;
+const dayStr = n => new Date(n * 864e5).toISOString().slice(0, 10);
+const addDays = (s, k) => dayStr(dayNum(s) + k);
+const weekday = s => new Date(dayNum(s) * 864e5).getUTCDay();
+const r1 = v => Math.round(v * 10) / 10;
+const f1 = v => v == null || !isFinite(v) ? "—" : (Math.abs(v) < 0.05 ? 0 : v).toFixed(1);
+const deg = v => v == null || !isFinite(v) ? "—" : f1(v) + "°";
+function signed(v, unit = "°") {
+  if (v == null || !isFinite(v)) return "—";
+  if (Math.abs(v) < 0.05) return "0.0" + unit;
+  return (v > 0 ? "+" : "−") + Math.abs(v).toFixed(1) + unit;
+}
+const dirOf = v => v == null || Math.abs(v) < 0.05 ? "flat" : v > 0 ? "up" : "down";
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+let toastTimer;
+function toast(text, undo) {
+  $("#toast-text").textContent = text;
+  const b = $("#toast-btn");
+  b.hidden = !undo;
+  b.onclick = () => { undo(); hideToast(); };
+  $("#toast").classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, undo ? 6000 : 3500);
+}
+function hideToast() { $("#toast").classList.remove("show"); }
+
+// ================= 数据 =================
+const pad2 = n => String(n).padStart(2, "0");
+// 交易日：当天 6 点到次日 5 点，凌晨 0–5 点算前一天
+const sessionOf = time => +time.slice(11, 13) < DAY_START ? addDays(time.slice(0, 10), -1) : time.slice(0, 10);
+const sessionHour = time => (+time.slice(11, 13) - DAY_START + 24) % 24;
+
+// 逐小时 → 每日 K 线：开 = 6 点，收 = 次日 5 点，高低 = 这 24 小时的极值，量 = 降水
+function hoursToDays(time, temp, prec, until) {
+  const m = new Map();
+  for (let i = 0; i < time.length; i++) {
+    const t = time[i];
+    if (until && t > until) break;
+    const v = temp[i];
+    if (v == null) continue;
+    const d = sessionOf(t), hr = sessionHour(t);
+    let e = m.get(d);
+    if (!e) { e = { d, o: v, oh: hr, h: v, l: v, c: v, ch: hr, p: 0, n: 0 }; m.set(d, e); }
+    if (hr < e.oh) { e.oh = hr; e.o = v; }
+    if (hr >= e.ch) { e.ch = hr; e.c = v; }
+    if (v > e.h) e.h = v;
+    if (v < e.l) e.l = v;
+    e.p += prec && prec[i] || 0;
+    e.n++;
+  }
+  return m;
+}
+const complete = e => e && e.n >= 23 && e.oh === 0 && e.ch === 23;
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+async function fetchLive(cities) {
+  if (!cities.length) return;
+  const lat = cities.map(c => c.lat.toFixed(4)).join(",");
+  const lon = cities.map(c => c.lon.toFixed(4)).join(",");
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    `&hourly=temperature_2m,precipitation&current=temperature_2m&past_days=10&forecast_days=2&timezone=auto`;
+  let j = await getJSON(url);
+  if (!Array.isArray(j)) j = [j];
+  j.forEach((r, i) => {
+    S.live[cities[i].id] = {
+      time: r.current.time, cur: r.current.temperature_2m, off: r.utc_offset_seconds, at: Date.now(),
+      hourly: { time: r.hourly.time, t: r.hourly.temperature_2m, p: r.hourly.precipitation },
+    };
+  });
+  store.set(K.live, S.live);
+}
+
+// 历史缓存放 IndexedDB：1940 年起每个城市约 3 万天，localStorage 放不下几个
+const idb = (() => {
+  let dbp;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open("tq", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("hist");
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+  const run = (mode, fn) => open().then(db => new Promise((res, rej) => {
+    const t = db.transaction("hist", mode), req = fn(t.objectStore("hist"));
+    t.oncomplete = () => res(req && req.result);
+    t.onerror = () => rej(t.error);
+  }));
+  return {
+    get: k => run("readonly", st => st.get(k)).catch(() => null),
+    put: (k, v) => run("readwrite", st => st.put(v, k)).catch(e => console.warn("历史缓存写入失败", e)),
+    keys: () => run("readonly", st => st.getAllKeys()).catch(() => []),
+    del: k => run("readwrite", st => st.delete(k)).catch(() => {}),
+  };
+})();
+
+// 列式存储：从 HIST_START 起每天一格，缺的天是 null
+function emptyHist() { return { start: HIST_START, v: HIST_V, o: [], h: [], l: [], c: [], p: [] }; }
+
+async function loadHist(id) {
+  if (S.hist[id]) return S.hist[id];
+  const h = await idb.get(id);
+  if (h && h.start === HIST_START && h.v === HIST_V && !S.hist[id]) S.hist[id] = h;
+  return S.hist[id] || null;
+}
+
+// 从 start 到 target 之间还缺的日子，合并成连续区间再切成 4 年一段
+function missingChunks(h, target) {
+  const base = dayNum(h.start), last = dayNum(target), runs = [];
+  let a = null;
+  // 第一天在东半球只有半天数据（ERA5 从 UTC 0 点开始），永远凑不齐，跳过
+  for (let n = base + 1; n <= last; n++) {
+    const miss = h.o[n - base] == null;
+    if (miss && a === null) a = n;
+    if (!miss && a !== null) { runs.push([a, n - 1]); a = null; }
+  }
+  if (a !== null) runs.push([a, last]);
+  const out = [];
+  for (const [a0, b0] of runs) {
+    for (let a1 = a0; a1 <= b0; ) {
+      const y = +dayStr(a1).slice(0, 4);
+      const b1 = Math.min(b0, Date.UTC(y + CHUNK_YEARS, 0, 1) / 864e5 - 1);
+      out.push([dayStr(a1), dayStr(b1)]);
+      a1 = b1 + 1;
+    }
+  }
+  return out.reverse();
+}
+
+function writeDays(h, days) {
+  const base = dayNum(h.start);
+  for (const [d, e] of days) {
+    if (!complete(e) || d < h.start) continue;
+    const i = dayNum(d) - base;
+    while (h.o.length < i) { h.o.push(null); h.h.push(null); h.l.push(null); h.c.push(null); h.p.push(null); }
+    h.o[i] = r1(e.o); h.h[i] = r1(e.h); h.l[i] = r1(e.l); h.c[i] = r1(e.c); h.p[i] = r1(e.p);
+  }
+}
+
+async function ensureHist(c) {
+  if (S.histLoading[c.id] || S.histChecked[c.id]) return;
+  const L = S.live[c.id];
+  if (!L) return;
+  S.histLoading[c.id] = { done: 0, total: 0 };
+  const h = (await loadHist(c.id)) || (S.hist[c.id] = emptyHist());
+  // archive 大约晚 5 天，再往后的用预报数据补
+  const chunks = missingChunks(h, addDays(todayOf(L), -6));
+  if (!chunks.length) { delete S.histLoading[c.id]; S.histChecked[c.id] = true; return; }
+  S.histLoading[c.id].total = chunks.length;
+  if (c.id === S.sel) renderAll();
+
+  let next = 0, failed = 0;
+  const worker = async () => {
+    while (next < chunks.length && S.watch.some(w => w.id === c.id)) {
+      const [a, b] = chunks[next++];
+      try {
+        const j = await getJSON(`https://archive-api.open-meteo.com/v1/archive?latitude=${c.lat.toFixed(4)}&longitude=${c.lon.toFixed(4)}` +
+          `&start_date=${a}&end_date=${addDays(b, 1)}&hourly=temperature_2m,precipitation&timezone=auto`);
+        writeDays(h, hoursToDays(j.hourly.time, j.hourly.temperature_2m, j.hourly.precipitation));
+        await idb.put(c.id, h);
+      } catch (e) {
+        console.error(e);
+        failed++;
+      }
+      S.histLoading[c.id].done++;
+      bump();
+      if (c.id === S.sel) renderAll();
+    }
+  };
+  await Promise.all(Array.from({ length: CHUNK_PARALLEL }, worker));
+  delete S.histLoading[c.id];
+  S.histChecked[c.id] = !failed;
+  if (failed) toast(t("histFail", { n: cname(c), k: failed }));
+  if (c.id === S.sel) renderAll();
+}
+
+function bump() { S.ver++; S.memo.clear(); }
+
+// 当前交易日（凌晨 0–5 点还算前一天）
+function todayOf(L) { return sessionOf(L.time); }
+
+// 昨收 = 本交易日开盘前一小时（5 点）的气温
+function prevClose(L) {
+  const H = L.hourly, start = `${todayOf(L)}T${pad2(DAY_START)}:00`;
+  for (let i = H.time.length - 1; i >= 0; i--) if (H.time[i] < start && H.t[i] != null) return H.t[i];
+  return null;
+}
+
+// 昨天同一时刻的气温（逐小时数据按分钟插值）
+function sameTimeYesterday(L) {
+  const H = L.hourly, hr = +L.time.slice(11, 13), mn = +L.time.slice(14, 16);
+  const i = H.time.indexOf(`${addDays(L.time.slice(0, 10), -1)}T${pad2(hr)}:00`);
+  if (i < 0 || H.t[i] == null) return null;
+  const a = H.t[i], b = H.t[i + 1];
+  return b == null ? a : a + (b - a) * mn / 60;
+}
+
+// 本交易日已经发生的逐小时温度（加上当前读数）；x 是开盘后的小时数
+function intraday(L) {
+  const today = todayOf(L), H = L.hourly, past = [], future = [];
+  const nowH = sessionHour(L.time) + +L.time.slice(14, 16) / 60;
+  for (let i = 0; i < H.time.length; i++) {
+    if (H.t[i] == null || sessionOf(H.time[i]) !== today) continue;
+    const hr = sessionHour(H.time[i]);
+    (hr <= nowH ? past : future).push({ x: hr, v: H.t[i], p: H.p[i] || 0 });
+  }
+  if (L.cur != null && (!past.length || past.at(-1).x < nowH)) past.push({ x: nowH, v: L.cur, p: 0, now: true });
+  return { past, future, nowH };
+}
+
+function dailySeries(c) {
+  const key = c.id + ":day";
+  if (S.memo.has(key)) return S.memo.get(key);
+  const out = [], h = S.hist[c.id], L = S.live[c.id];
+  let liveStart = "9999";
+  let liveDays = null;
+  if (L) {
+    liveDays = hoursToDays(L.hourly.time, L.hourly.t, L.hourly.p, L.time);
+    liveStart = L.hourly.time[0].slice(0, 10);
+  }
+  if (h) {
+    const base = dayNum(h.start);
+    for (let i = 0; i < h.o.length; i++) {
+      if (h.o[i] == null) continue;
+      const d = dayStr(base + i);
+      if (d >= liveStart) break;
+      out.push({ d, o: h.o[i], h: h.h[i], l: h.l[i], c: h.c[i], p: h.p[i] });
+    }
+  }
+  if (L) {
+    const today = todayOf(L);
+    for (const [d, e] of [...liveDays].sort((a, b) => a[0] < b[0] ? -1 : 1)) {
+      if (d < today && !complete(e)) continue;
+      const row = { d, o: e.o, h: e.h, l: e.l, c: e.c, p: r1(e.p), live: d === today };
+      if (d === today && L.cur != null) { row.c = L.cur; row.h = Math.max(row.h, L.cur); row.l = Math.min(row.l, L.cur); }
+      out.push(row);
+    }
+  }
+  S.memo.set(key, out);
+  return out;
+}
+
+function groupKey(d, mode) {
+  if (mode === "week") return dayStr(dayNum(d) - (weekday(d) + 6) % 7);
+  if (mode === "month") return d.slice(0, 7);
+  return d.slice(0, 4);
+}
+
+function series(c, mode) {
+  const key = c.id + ":k:" + mode;
+  if (S.memo.has(key)) return S.memo.get(key);
+  const days = dailySeries(c);
+  let out = days;
+  if (mode !== "day") {
+    out = [];
+    let cur = null;
+    for (const e of days) {
+      const k = groupKey(e.d, mode);
+      if (!cur || cur.k !== k) { cur = { k, d: e.d, o: e.o, h: e.h, l: e.l, c: e.c, p: e.p, live: e.live }; out.push(cur); }
+      else { cur.h = Math.max(cur.h, e.h); cur.l = Math.min(cur.l, e.l); cur.c = e.c; cur.p = r1(cur.p + e.p); cur.live = e.live; }
+    }
+  }
+  for (const [n] of MA) {
+    let sum = 0;
+    out.forEach((e, i) => {
+      sum += e.c;
+      if (i >= n) sum -= out[i - n].c;
+      e["ma" + n] = i >= n - 1 ? sum / n : null;
+    });
+  }
+  S.memo.set(key, out);
+  return out;
+}
+
+// ================= 自选列表 =================
+function sel() { return S.watch.find(c => c.id === S.sel); }
+
+function quoteOf(c) {
+  const L = S.live[c.id];
+  if (!L) return null;
+  const pc = prevClose(L), ref = sameTimeYesterday(L);
+  return { cur: L.cur, pc, ref, chg: L.cur != null && ref != null ? L.cur - ref : null, L };
+}
+
+function renderList() {
+  const list = $("#list");
+  if (!S.watch.length) {
+    list.innerHTML = `<div class="empty-list">${t("emptyList")}</div>`;
+    return;
+  }
+  list.innerHTML = S.watch.map(c => {
+    const q = quoteOf(c), d = dirOf(q?.chg);
+    return `<div class="row ${c.id === S.sel ? "on" : ""}" role="option" tabindex="${c.id === S.sel ? 0 : -1}"
+              aria-selected="${c.id === S.sel}" data-id="${c.id}">
+      <div class="nm"><b></b><i>${c.code}</i></div>
+      <canvas width="128" height="52" aria-hidden="true"></canvas>
+      <div class="px num ${d}">${q ? f1(q.cur) : "—"}</div>
+      <div class="chg num ${d}">${q ? signed(q.chg) : "—"}</div>
+      <button class="del" type="button" aria-label="${escapeHTML(t("remove", { n: cname(c) }))}" tabindex="-1">
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>`;
+  }).join("");
+  [...list.children].forEach((row, i) => {
+    const c = S.watch[i];
+    row.querySelector("b").textContent = cname(c);
+    drawSpark(row.querySelector("canvas"), c);
+  });
+}
+
+function drawSpark(cv, c) {
+  const L = S.live[c.id];
+  if (!L) return;
+  const { past } = intraday(L), pc = sameTimeYesterday(L);
+  const g = cv.getContext("2d"), W = cv.width, H = cv.height;
+  g.clearRect(0, 0, W, H);
+  if (past.length < 2) return;
+  const vals = past.map(p => p.v).concat(pc ?? []);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (hi - lo < 1) { const m = (hi + lo) / 2; lo = m - .5; hi = m + .5; }
+  const x = h => h / 24 * W, y = v => H - 4 - (v - lo) / (hi - lo) * (H - 8);
+  if (pc != null) {
+    g.strokeStyle = "rgba(255,255,255,.18)"; g.lineWidth = 1.5; g.setLineDash([3, 4]);
+    g.beginPath(); g.moveTo(0, y(pc)); g.lineTo(W, y(pc)); g.stroke(); g.setLineDash([]);
+  }
+  g.strokeStyle = color(dirOf(L.cur - pc) === "down" ? "--down" : dirOf(L.cur - pc) === "up" ? "--up" : "--flat");
+  g.lineWidth = 2.5; g.lineJoin = "round";
+  g.beginPath();
+  past.forEach((p, i) => i ? g.lineTo(x(p.x), y(p.v)) : g.moveTo(x(p.x), y(p.v)));
+  g.stroke();
+}
+
+function select(id, focus) {
+  if (!S.watch.some(c => c.id === id)) return;
+  S.sel = id;
+  S.views = {};
+  S.hover = null;
+  store.set(K.prefs, { ...S.prefs, sel: id, mode: S.mode });
+  renderAll();
+  if (focus) $(`.row[data-id="${id}"]`)?.focus();
+  ensureHist(sel());
+}
+
+function removeCity(id) {
+  const i = S.watch.findIndex(c => c.id === id);
+  if (i < 0) return;
+  const [c] = S.watch.splice(i, 1);
+  saveWatch();
+  if (S.sel === id) S.sel = (S.watch[i] || S.watch[i - 1])?.id || null;
+  renderAll();
+  if (S.sel) ensureHist(sel());
+  toast(t("removed", { n: cname(c) }), () => {
+    S.watch.splice(i, 0, c);
+    saveWatch();
+    select(c.id);
+  });
+}
+
+function saveWatch() { store.set(K.watch, S.watch); }
+
+// ================= 搜索添加 =================
+let searchSeq = 0, searchTimer, results = [], active = -1;
+const qEl = $("#q"), resEl = $("#results");
+
+function showResults(html) {
+  resEl.innerHTML = html;
+  resEl.hidden = !html;
+  qEl.setAttribute("aria-expanded", String(!!html));
+}
+
+qEl.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  const q = qEl.value.trim();
+  if (!q) { results = []; showResults(""); return; }
+  searchTimer = setTimeout(() => search(q), 250);
+});
+
+// 地名接口对中文覆盖不全（搜「首尔」「纽约」没有结果），常用城市先翻成英文再搜
+const ALIAS = (() => {
+  const src = `北京 Beijing|上海 Shanghai|广州 Guangzhou|廣州 Guangzhou|深圳 Shenzhen|天津 Tianjin|重庆 Chongqing|重慶 Chongqing|成都 Chengdu|武汉 Wuhan|武漢 Wuhan|杭州 Hangzhou|南京 Nanjing|西安 Xi'an|苏州 Suzhou|蘇州 Suzhou|长沙 Changsha|長沙 Changsha|郑州 Zhengzhou|青岛 Qingdao|青島 Qingdao|大连 Dalian|大連 Dalian|沈阳 Shenyang|哈尔滨 Harbin|哈爾濱 Harbin|长春 Changchun|济南 Jinan|厦门 Xiamen|廈門 Xiamen|福州 Fuzhou|昆明 Kunming|贵阳 Guiyang|南宁 Nanning|海口 Haikou|三亚 Sanya|拉萨 Lhasa|拉薩 Lhasa|乌鲁木齐 Urumqi|兰州 Lanzhou|西宁 Xining|银川 Yinchuan|呼和浩特 Hohhot|太原 Taiyuan|石家庄 Shijiazhuang|合肥 Hefei|南昌 Nanchang|宁波 Ningbo|无锡 Wuxi|珠海 Zhuhai|香港 Hong Kong|澳门 Macau|澳門 Macau|台北 Taipei|臺北 Taipei|高雄 Kaohsiung|台中 Taichung|臺中 Taichung|` +
+    `东京 Tokyo|東京 Tokyo|大阪 Osaka|京都 Kyoto|名古屋 Nagoya|札幌 Sapporo|福冈 Fukuoka|福岡 Fukuoka|横滨 Yokohama|横浜 Yokohama|神户 Kobe|神戸 Kobe|奈良 Nara|仙台 Sendai|广岛 Hiroshima|広島 Hiroshima|冲绳 Naha|沖縄 Naha|那霸 Naha|那覇 Naha|金泽 Kanazawa|金沢 Kanazawa|函馆 Hakodate|函館 Hakodate|` +
+    `首尔 Seoul|首爾 Seoul|ソウル Seoul|釜山 Busan|济州 Jeju|濟州 Jeju|平壤 Pyongyang|乌兰巴托 Ulaanbaatar|` +
+    `曼谷 Bangkok|清迈 Chiang Mai|新加坡 Singapore|吉隆坡 Kuala Lumpur|雅加达 Jakarta|巴厘岛 Denpasar|马尼拉 Manila|河内 Hanoi|胡志明市 Ho Chi Minh City|胡志明 Ho Chi Minh City|金边 Phnom Penh|仰光 Yangon|新德里 New Delhi|德里 Delhi|孟买 Mumbai|班加罗尔 Bangalore|加尔各答 Kolkata|加德满都 Kathmandu|科伦坡 Colombo|迪拜 Dubai|阿布扎比 Abu Dhabi|多哈 Doha|利雅得 Riyadh|德黑兰 Tehran|伊斯坦布尔 Istanbul|耶路撒冷 Jerusalem|特拉维夫 Tel Aviv|` +
+    `伦敦 London|倫敦 London|ロンドン London|巴黎 Paris|柏林 Berlin|慕尼黑 Munich|法兰克福 Frankfurt|汉堡 Hamburg|罗马 Rome|羅馬 Rome|米兰 Milan|威尼斯 Venice|佛罗伦萨 Florence|马德里 Madrid|巴塞罗那 Barcelona|里斯本 Lisbon|阿姆斯特丹 Amsterdam|布鲁塞尔 Brussels|维也纳 Vienna|苏黎世 Zurich|日内瓦 Geneva|布拉格 Prague|布达佩斯 Budapest|华沙 Warsaw|哥本哈根 Copenhagen|斯德哥尔摩 Stockholm|奥斯陆 Oslo|赫尔辛基 Helsinki|雷克雅未克 Reykjavik|都柏林 Dublin|爱丁堡 Edinburgh|曼彻斯特 Manchester|雅典 Athens|莫斯科 Moscow|圣彼得堡 Saint Petersburg|基辅 Kyiv|` +
+    `纽约 New York|紐約 New York|ニューヨーク New York|洛杉矶 Los Angeles|洛杉磯 Los Angeles|旧金山 San Francisco|舊金山 San Francisco|西雅图 Seattle|芝加哥 Chicago|波士顿 Boston|华盛顿 Washington|華盛頓 Washington|迈阿密 Miami|拉斯维加斯 Las Vegas|休斯顿 Houston|达拉斯 Dallas|丹佛 Denver|凤凰城 Phoenix|亚特兰大 Atlanta|费城 Philadelphia|檀香山 Honolulu|夏威夷 Honolulu|安克雷奇 Anchorage|温哥华 Vancouver|多伦多 Toronto|蒙特利尔 Montreal|渥太华 Ottawa|墨西哥城 Mexico City|坎昆 Cancun|哈瓦那 Havana|` +
+    `圣保罗 Sao Paulo|里约热内卢 Rio de Janeiro|布宜诺斯艾利斯 Buenos Aires|利马 Lima|圣地亚哥 Santiago|波哥大 Bogota|开罗 Cairo|開羅 Cairo|开普敦 Cape Town|约翰内斯堡 Johannesburg|内罗毕 Nairobi|卡萨布兰卡 Casablanca|拉各斯 Lagos|` +
+    `悉尼 Sydney|雪梨 Sydney|墨尔本 Melbourne|墨爾本 Melbourne|布里斯班 Brisbane|珀斯 Perth|阿德莱德 Adelaide|堪培拉 Canberra|奥克兰 Auckland|惠灵顿 Wellington|皇后镇 Queenstown`;
+  const m = new Map();
+  for (const pair of src.split("|")) { const i = pair.indexOf(" "); m.set(pair.slice(0, i), pair.slice(i + 1)); }
+  return m;
+})();
+
+async function search(q) {
+  const seq = ++searchSeq;
+  showResults(`<li class="msg">${t("searching")}</li>`);
+  const cjk = /[\u3040-\u30ff\u3400-\u9fff]/.test(q);
+  const queries = [q];
+  if (ALIAS.has(q)) queries.push(ALIAS.get(q));
+  if (cjk && !/[市县縣区區]$/.test(q)) queries.push(q + "市");
+  try {
+    const lists = await Promise.all(queries.map(name =>
+      getJSON(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=8&language=${S.prefs.lang}&format=json`)
+        .then(j => j.results || []).catch(() => null)));
+    if (seq !== searchSeq) return;
+    if (lists.every(l => l === null)) throw new Error("offline");
+    const seen = new Map();
+    for (const r of lists.flat()) if (r && r.latitude != null && !seen.has(r.id)) seen.set(r.id, r);
+    results = [...seen.values()].sort((a, b) => (b.population || 0) - (a.population || 0)).slice(0, 8);
+    active = results.length ? 0 : -1;
+    if (!results.length) { showResults(`<li class="msg">${t("notFound", { q: escapeHTML(q) })}</li>`); return; }
+    showResults(results.map((r, i) => `<li role="option" data-i="${i}" class="${i === active ? "on" : ""}" aria-selected="${i === active}">
+      <span>${escapeHTML(r.name)}</span><small>${escapeHTML([r.admin1, r.country].filter(Boolean).join(" · "))}</small></li>`).join(""));
+  } catch {
+    if (seq === searchSeq) showResults(`<li class="msg">${t("searchFail")}</li>`);
+  }
+}
+
+function escapeHTML(s) { return String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]); }
+
+function setActive(i) {
+  active = i;
+  [...resEl.querySelectorAll("li[data-i]")].forEach(li => {
+    const on = +li.dataset.i === i;
+    li.classList.toggle("on", on);
+    li.setAttribute("aria-selected", on);
+  });
+}
+
+qEl.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" && results.length) { e.preventDefault(); setActive((active + 1) % results.length); }
+  else if (e.key === "ArrowUp" && results.length) { e.preventDefault(); setActive((active - 1 + results.length) % results.length); }
+  else if (e.key === "Enter" && active >= 0) { e.preventDefault(); addCity(results[active]); }
+  else if (e.key === "Escape") { qEl.value = ""; results = []; showResults(""); }
+});
+resEl.addEventListener("mousedown", e => {
+  const li = e.target.closest("li[data-i]");
+  if (li) { e.preventDefault(); addCity(results[+li.dataset.i]); }
+});
+qEl.addEventListener("blur", () => setTimeout(() => showResults(""), 120));
+qEl.addEventListener("focus", () => { if (qEl.value.trim() && results.length) search(qEl.value.trim()); });
+
+function makeCode(en) {
+  const letters = (en || "").normalize("NFD").replace(/[^A-Za-z]/g, "").toUpperCase();
+  const used = new Set(S.watch.map(c => c.code));
+  const cands = [letters.slice(0, 3), letters[0] + letters.slice(2, 4), letters[0] + letters[1] + letters.at(-1)];
+  for (const k of cands) if (k && k.length === 3 && !used.has(k)) return k;
+  for (let n = 1; n < 100; n++) { const k = (letters.slice(0, 2) || "C") + n; if (!used.has(k)) return k; }
+  return "CTY";
+}
+
+// 三种语言的城市名和国名各取一次，切换语言时不用再查
+async function fetchNames(geoId) {
+  const names = {}, countries = {};
+  await Promise.all(Object.keys(LANGS).map(async lang => {
+    try {
+      const j = await getJSON(`https://geocoding-api.open-meteo.com/v1/get?id=${geoId}&language=${lang}`);
+      if (j.name) names[lang] = j.name;
+      if (j.country) countries[lang] = j.country;
+    } catch {}
+  }));
+  return { names, countries };
+}
+
+async function addCity(r) {
+  qEl.value = ""; results = []; showResults("");
+  const id = "g" + r.id;
+  if (S.watch.some(c => c.id === id)) { select(id, true); toast(t("already", { n: r.name })); return; }
+  const loc = await fetchNames(r.id);
+  const names = { [S.prefs.lang]: r.name, ...loc.names };
+  const countries = { [S.prefs.lang]: r.country || "", ...loc.countries };
+  const c = { id, names, countries, code: makeCode(names.en || r.name), lat: r.latitude, lon: r.longitude };
+  S.watch.push(c);
+  saveWatch();
+  S.sel = id;
+  renderAll();
+  try { await fetchLive([c]); bump(); } catch { toast(t("liveFail")); }
+  select(id, true);
+}
+
+// ================= 报价头和统计 =================
+function localClock(L) {
+  const t = new Date(Date.now() + L.off * 1000);
+  return `${String(t.getUTCHours()).padStart(2, "0")}:${String(t.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+function renderQuote() {
+  const c = sel();
+  if (!c) {
+    $("#t-name").textContent = "—"; $("#t-code").textContent = ""; $("#t-meta").textContent = "";
+    $("#p-big").textContent = "—"; $("#p-sub").innerHTML = "&nbsp;"; $("#stats").innerHTML = "";
+    return;
+  }
+  const q = quoteOf(c), d = dirOf(q?.chg);
+  $("#t-name").textContent = cname(c);
+  $("#t-code").textContent = [c.code, ccountry(c)].filter(Boolean).join(" · ");
+  const live = $("#t-live");
+  const stale = !q || Date.now() - q.L.at > REFRESH_MS * 2 || !S.online;
+  live.classList.toggle("stale", stale);
+  const at = q && new Date(q.L.at);
+  const hm = at && `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+  live.textContent = !q ? t("connecting") : stale ? `${t("updated", { t: hm })} · ${t("offline")}` : t("updated", { t: hm });
+  $("#t-meta").textContent = q ? `· ${t("local", { t: localClock(q.L) })} · ${Math.abs(c.lat).toFixed(2)}°${c.lat >= 0 ? "N" : "S"} ${Math.abs(c.lon).toFixed(2)}°${c.lon >= 0 ? "E" : "W"}` : "";
+  const big = $("#p-big");
+  big.textContent = q ? deg(q.cur) : "—";
+  big.className = "big num " + d;
+  $("#p-sub").className = "sub num " + d;
+  $("#p-sub").innerHTML = q ? `${signed(q.chg)}<small>${t("vsYday")}</small>` : "&nbsp;";
+  renderStats(c, q);
+}
+
+function renderStats(c, q) {
+  const days = dailySeries(c);
+  const L = q?.L, today = L ? todayOf(L) : null;
+  const td = days.at(-1)?.d === today ? days.at(-1) : null;
+  const pc = q?.pc;
+  const hasHist = !!S.hist[c.id] && !S.histLoading[c.id];
+  const cls = v => v == null || pc == null ? "" : dirOf(v - pc);
+
+  let yr = null, monthAvg = null;
+  if (today) {
+    const from = addDays(today, -364), month = today.slice(0, 7);
+    let sum = 0, n = 0;
+    for (const e of days) {
+      if (e.d >= from) {
+        if (!yr) yr = { hi: e, lo: e };
+        if (e.h > yr.hi.h) yr.hi = e;
+        if (e.l < yr.lo.l) yr.lo = e;
+      }
+      if (e.d.startsWith(month)) { sum += (e.h + e.l) / 2; n++; }
+    }
+    if (n) monthAvg = sum / n;
+  }
+  const md = e => e ? `${+e.d.slice(5, 7)}/${+e.d.slice(8, 10)}` : "";
+  const wait = hasHist ? "—" : "…";
+  const items = [
+    [t("open"), deg(td?.o), cls(td?.o)],
+    [t("high"), deg(td?.h), cls(td?.h)],
+    [t("low"), deg(td?.l), cls(td?.l)],
+    [t("precipToday"), td ? f1(td.p) + " mm" : "—", ""],
+    [t("yHigh"), hasHist && yr ? deg(yr.hi.h) : wait, "", hasHist && yr ? md(yr.hi) : ""],
+    [t("yLow"), hasHist && yr ? deg(yr.lo.l) : wait, "", hasHist && yr ? md(yr.lo) : ""],
+    [t("monthAvg"), hasHist && monthAvg != null ? deg(monthAvg) : wait, ""],
+  ];
+  $("#stats").innerHTML = items.map(([k, v, c2, sub]) =>
+    `<div class="stat"><span>${k}</span><b class="num ${c2}">${v}</b>${sub ? `<small class="num">${sub}</small>` : ""}</div>`).join("");
+}
+
+// ================= 图表 =================
+const cv = $("#chart"), ctx = cv.getContext("2d");
+let W = 0, H = 0, dpr = 1, colors = {};
+
+function color(v) { return colors[v] || (colors[v] = getComputedStyle(document.documentElement).getPropertyValue(v).trim()); }
+function resetColors() { colors = {}; }
+
+function resize() {
+  const r = cv.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1;
+  W = r.width; H = r.height;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  draw();
+}
+new ResizeObserver(resize).observe(cv);
+
+function geom() {
+  const R = 62, B = 26, T = 10, gap = 16;
+  const ph = Math.round((H - B - T - gap) * 0.76);
+  return { x1: W - R, pT: T, pB: T + ph, vT: T + ph + gap, vB: H - B };
+}
+
+function niceTicks(lo, hi, n) {
+  const raw = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) || 10 * mag;
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(6));
+  return out;
+}
+
+function view(n) {
+  const m = MODES[S.mode];
+  // 年K固定从 1940 年铺满整张图，不缩放不平移
+  if (m.fixed) return { count: Math.max(n, m.min), offset: 0, start: 0 };
+  const v = S.views[S.mode] || (S.views[S.mode] = { count: m.count, offset: 0 });
+  v.count = clamp(v.count, m.min, m.max);
+  v.offset = clamp(v.offset, 0, Math.max(0, n - Math.min(v.count, n)));
+  return { ...v, start: n - v.offset - v.count };
+}
+
+function label(ctx2, text, x, y, bg, fg, align = "left") {
+  ctx2.font = "600 11px " + color("--sans");
+  const w = ctx2.measureText(text).width + 10;
+  const bx = align === "left" ? x : align === "right" ? x - w : x - w / 2;
+  ctx2.fillStyle = bg;
+  ctx2.beginPath(); ctx2.roundRect(bx, y - 9, w, 18, 4); ctx2.fill();
+  ctx2.fillStyle = fg;
+  ctx2.textAlign = "left"; ctx2.textBaseline = "middle";
+  ctx2.fillText(text, bx + 5, y + .5);
+}
+
+function setMsg(t) {
+  const m = $("#chart-msg");
+  m.hidden = !t;
+  m.textContent = t || "";
+}
+
+function draw() {
+  if (!W) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const c = sel();
+  if (!c) { setMsg(t("noCity")); $("#legend").innerHTML = ""; return; }
+  if (!S.live[c.id]) { setMsg(t("fetching")); $("#legend").innerHTML = ""; return; }
+  setMsg("");
+  if (S.mode === "intra") drawIntra(c); else drawK(c);
+}
+
+function drawGridY(g, ticks, y) {
+  ctx.font = "11px " + color("--sans");
+  ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  for (const t of ticks) {
+    const yy = Math.round(y(t)) + .5;
+    if (yy < g.pT || yy > g.pB) continue;
+    ctx.strokeStyle = "rgba(255,255,255,.06)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(g.x1, yy); ctx.stroke();
+    ctx.fillStyle = color("--ink-3");
+    ctx.fillText(f1(t) + "°", g.x1 + 8, yy);
+  }
+}
+
+function drawFrame(g) {
+  ctx.strokeStyle = "rgba(255,255,255,.1)"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(Math.round(g.x1) + .5, 0); ctx.lineTo(Math.round(g.x1) + .5, H);
+  ctx.moveTo(0, Math.round(g.vB) + .5); ctx.lineTo(W, Math.round(g.vB) + .5);
+  ctx.moveTo(0, Math.round(g.pB + 8) + .5); ctx.lineTo(g.x1, Math.round(g.pB + 8) + .5);
+  ctx.stroke();
+}
+
+function fmtBar(e, mode) {
+  if (mode === "day") return t("dayFmt", { d: e.d.replace(/-/g, "/"), w: t("week")[weekday(e.d)] });
+  if (mode === "week") return t("weekOf", { d: e.k.replace(/-/g, "/") });
+  if (mode === "month") return t("monthFmt", { y: e.k.slice(0, 4), m: +e.k.slice(5), M: MON[+e.k.slice(5) - 1] });
+  return t("yearFmt", { y: e.k });
+}
+
+function drawK(c) {
+  const data = series(c, S.mode), n = data.length, g = geom();
+  if (!n) { setMsg(t("noData")); return; }
+  const v = view(n), cw = g.x1 / v.count;
+  const i0 = Math.max(0, Math.floor(v.start)), i1 = Math.min(n, Math.ceil(v.start + v.count));
+  const xOf = i => (i - v.start + .5) * cw;
+
+  let lo = Infinity, hi = -Infinity, pmax = 0, hiI = -1, loI = -1;
+  for (let i = i0; i < i1; i++) {
+    const e = data[i];
+    if (e.h > hi) { hi = e.h; hiI = i; }
+    if (e.l < lo) { lo = e.l; loI = i; }
+    for (const [m] of MA) { const a = e["ma" + m]; if (a != null) { lo = Math.min(lo, a); hi = Math.max(hi, a); } }
+    pmax = Math.max(pmax, e.p || 0);
+  }
+  const pad = Math.max((hi - lo) * .08, .5);
+  lo -= pad; hi += pad;
+  const y = val => g.pB - (val - lo) / (hi - lo) * (g.pB - g.pT);
+
+  drawGridY(g, niceTicks(lo, hi, 5), y);
+  drawFrame(g);
+
+  // 时间轴
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, g.x1, H); ctx.clip();
+  ctx.fillStyle = color("--ink-3"); ctx.font = "11px " + color("--sans");
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const coarse = S.mode === "day" ? (cw < 1.6 ? "y" : "m") : S.mode === "week" ? (cw < 5 ? "y" : "m") : "y";
+  let lastX = -1e9, prevK = null;
+  // 年K逢 5 或逢 10 的年份标注
+  const every = cw * 5 >= 56 ? 5 : 10;
+  for (let i = i0; i < i1; i++) {
+    const d = data[i].d, k = coarse === "y" ? d.slice(0, 4) : d.slice(0, 7);
+    const yearMark = S.mode === "year" && +k % every === 0;
+    if (yearMark || (S.mode !== "year" && prevK !== null && k !== prevK)) {
+      const x = xOf(i);
+      if (x - lastX > (yearMark ? 50 : 72) && x > (yearMark ? 0 : 20) && x < g.x1 - 20) {
+        ctx.strokeStyle = "rgba(255,255,255,.04)";
+        ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, g.pT); ctx.lineTo(Math.round(x) + .5, g.vB); ctx.stroke();
+        ctx.fillText(coarse === "y" || d.slice(5, 7) === "01" ? d.slice(0, 4) : t("axisMonth", { m: +d.slice(5, 7), M: MON[+d.slice(5, 7) - 1] }), Math.max(x, 16), g.vB + 13);
+        lastX = x;
+      }
+    }
+    prevK = k;
+  }
+
+  // 蜡烛
+  const bw = Math.max(1, Math.min(cw * .72, 18));
+  for (let i = i0; i < i1; i++) {
+    const e = data[i], x = Math.round(xOf(i));
+    const up = e.c >= e.o;
+    ctx.fillStyle = ctx.strokeStyle = color(up ? "--up" : "--down");
+    ctx.fillRect(x, Math.round(y(e.h)), 1, Math.max(1, Math.round(y(e.l)) - Math.round(y(e.h))));
+    const top = Math.round(y(Math.max(e.o, e.c))), bot = Math.round(y(Math.min(e.o, e.c)));
+    if (bw >= 3) ctx.fillRect(Math.round(x - bw / 2 + .5), top, Math.round(bw), Math.max(1, bot - top));
+    // 降水 = 成交量
+    if (pmax > 0 && e.p > 0) {
+      const ph = (e.p / pmax) * (g.vB - g.vT - 4);
+      ctx.fillStyle = color("--rain");
+      ctx.globalAlpha = .75;
+      ctx.fillRect(Math.round(x - Math.max(1, bw) / 2 + .5), Math.round(g.vB - ph), Math.max(1, Math.round(bw)), Math.round(ph));
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // 均线
+  ctx.lineWidth = 1.2; ctx.lineJoin = "round";
+  for (const [m, col] of MA) {
+    ctx.strokeStyle = color(col);
+    ctx.beginPath();
+    let started = false;
+    for (let i = Math.max(0, i0 - 1); i < Math.min(n, i1 + 1); i++) {
+      const a = data[i]["ma" + m];
+      if (a == null) { started = false; continue; }
+      started ? ctx.lineTo(xOf(i), y(a)) : ctx.moveTo(xOf(i), y(a));
+      started = true;
+    }
+    ctx.stroke();
+  }
+
+  // 区间最高最低标注
+  ctx.font = "11px " + color("--sans"); ctx.textBaseline = "middle";
+  const mark = (i, val, below) => {
+    const x = xOf(i), yy = y(val) + (below ? 10 : -10);
+    const right = x < g.x1 / 2;
+    const txt = deg(val);
+    ctx.fillStyle = color("--ink-2"); ctx.strokeStyle = "rgba(255,255,255,.35)";
+    ctx.beginPath(); ctx.moveTo(x, y(val)); ctx.lineTo(x + (right ? 14 : -14), yy); ctx.stroke();
+    ctx.textAlign = right ? "left" : "right";
+    ctx.fillText(txt, x + (right ? 17 : -17), yy);
+  };
+  if (hiI >= 0) mark(hiI, data[hiI].h, false);
+  if (loI >= 0) mark(loI, data[loI].l, true);
+
+  ctx.restore();
+  // 降水刻度
+  ctx.font = "11px " + color("--sans"); ctx.textBaseline = "middle";
+  ctx.textAlign = "left"; ctx.fillStyle = color("--ink-3");
+  ctx.fillText(pmax ? `${f1(pmax)}mm` : "0mm", g.x1 + 8, g.vT + 6);
+
+  // 最新价线
+  const last = data[n - 1];
+  const ly = Math.round(y(last.c)) + .5;
+  const lastCol = color(last.c >= last.o ? "--up" : "--down");
+  if (ly > g.pT && ly < g.pB) {
+    ctx.strokeStyle = lastCol; ctx.globalAlpha = .55; ctx.setLineDash([2, 3]);
+    ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(g.x1, ly); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    label(ctx, deg(last.c), g.x1 + 2, ly, lastCol, "#fff");
+  }
+
+  // 十字线
+  let hi2 = n - 1;
+  if (S.hover) {
+    hi2 = clamp(Math.floor(v.start + S.hover.x / cw), i0, i1 - 1);
+    const x = Math.round(xOf(hi2)) + .5;
+    ctx.strokeStyle = "rgba(255,255,255,.4)"; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x, g.pT); ctx.lineTo(x, g.vB); ctx.stroke();
+    const hy = S.hover.y;
+    if (hy >= g.pT && hy <= g.pB) {
+      ctx.beginPath(); ctx.moveTo(0, Math.round(hy) + .5); ctx.lineTo(g.x1, Math.round(hy) + .5); ctx.stroke();
+      ctx.setLineDash([]);
+      label(ctx, deg(lo + (g.pB - hy) / (g.pB - g.pT) * (hi - lo)), g.x1 + 2, hy, "#3a3a42", "#fff");
+    }
+    ctx.setLineDash([]);
+    label(ctx, fmtBar(data[hi2], S.mode), clamp(x, 60, g.x1 - 60), g.vB + 13, "#3a3a42", "#fff", "center");
+  }
+  renderLegendK(data, hi2);
+}
+
+function renderLegendK(data, i) {
+  const e = data[i], prev = data[i - 1];
+  const chg = prev ? e.c - prev.c : null;
+  const col = v => `class="num ${v == null ? "" : dirOf(v)}"`;
+  const vs = v => prev ? `class="${dirOf(v - prev.c)}"` : "";
+  $("#legend").innerHTML =
+    `<div class="l1"><span class="d">${fmtBar(e, S.mode)}${e.live ? " · " + t("live") : ""}</span>` +
+    `${t("o")}<b ${vs(e.o)}>${f1(e.o)}</b>${t("h")}<b ${vs(e.h)}>${f1(e.h)}</b>${t("l")}<b ${vs(e.l)}>${f1(e.l)}</b>${t("c")}<b ${vs(e.c)}>${f1(e.c)}</b>` +
+    `${t("chg")}<b ${col(chg)}>${signed(chg)}</b>${t("range")}<b>${f1(e.h - e.l)}°</b><span class="rain">${t("precip")}</span><b class="rain">${f1(e.p)} mm</b></div>` +
+    `<div class="l2">${MA.map(([m], k) => `<span class="m${m}">MA${m}</span><b class="m${m}">${f1(e["ma" + m])}</b>`).join("")}</div>`;
+}
+
+function drawIntra(c) {
+  const L = S.live[c.id], g = geom();
+  const { past, future, nowH } = intraday(L);
+  const pc = prevClose(L);
+  const all = past.concat(future).map(p => p.v);
+  if (!all.length) { setMsg(t("noToday")); return; }
+  const base = pc ?? all[0];
+  let dev = Math.max(...all.map(v => Math.abs(v - base)));
+  dev = Math.max(1, dev * 1.15);
+  const lo = base - dev, hi = base + dev;
+  const x = h => h / 24 * g.x1;
+  const y = v => g.pB - (v - lo) / (hi - lo) * (g.pB - g.pT);
+
+  // 网格：昨收居中，上下各两档，左侧标涨跌
+  ctx.font = "11px " + color("--sans"); ctx.textBaseline = "middle";
+  for (const k of [-1, -.5, 0, .5, 1]) {
+    const val = base + k * dev, yy = Math.round(y(val)) + .5;
+    ctx.strokeStyle = k === 0 ? "rgba(255,255,255,.28)" : "rgba(255,255,255,.06)";
+    ctx.setLineDash(k === 0 ? [4, 4] : []);
+    ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(g.x1, yy); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.textAlign = "left";
+    ctx.fillStyle = k === 0 ? color("--ink-2") : color(k > 0 ? "--up" : "--down");
+    ctx.fillText(deg(val), g.x1 + 8, clamp(yy, g.pT + 6, g.pB - 6));
+    if (k) { ctx.textAlign = "left"; ctx.fillText(signed(k * dev), 6, clamp(yy + (k > 0 ? 9 : -9), g.pT + 6, g.pB - 6)); }
+  }
+  drawFrame(g);
+
+  ctx.fillStyle = color("--ink-3"); ctx.textAlign = "center";
+  for (let h = 0; h <= 24; h += 3) {
+    const xx = Math.round(x(h)) + .5;
+    ctx.strokeStyle = "rgba(255,255,255,.04)";
+    ctx.beginPath(); ctx.moveTo(xx, g.pT); ctx.lineTo(xx, g.vB); ctx.stroke();
+    ctx.fillText(`${pad2((h + DAY_START) % 24)}:00`, clamp(xx, 18, g.x1 - 18), g.vB + 13);
+  }
+
+  const lineCol = color(dirOf((L.cur ?? base) - base) === "down" ? "--down" : dirOf((L.cur ?? base) - base) === "up" ? "--up" : "--ma5");
+
+  // 预报虚线
+  if (future.length && past.length) {
+    ctx.strokeStyle = "rgba(255,255,255,.3)"; ctx.lineWidth = 1.2; ctx.setLineDash([3, 4]);
+    ctx.beginPath(); ctx.moveTo(x(past.at(-1).x), y(past.at(-1).v));
+    future.forEach(p => ctx.lineTo(x(p.x), y(p.v)));
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // 已发生的走势 + 面积
+  if (past.length) {
+    const grad = ctx.createLinearGradient(0, g.pT, 0, g.pB);
+    grad.addColorStop(0, lineCol + "40"); grad.addColorStop(1, lineCol + "00");
+    ctx.beginPath();
+    past.forEach((p, i) => i ? ctx.lineTo(x(p.x), y(p.v)) : ctx.moveTo(x(p.x), y(p.v)));
+    ctx.lineTo(x(past.at(-1).x), g.pB); ctx.lineTo(x(past[0].x), g.pB); ctx.closePath();
+    ctx.fillStyle = grad; ctx.fill();
+    ctx.beginPath();
+    past.forEach((p, i) => i ? ctx.lineTo(x(p.x), y(p.v)) : ctx.moveTo(x(p.x), y(p.v)));
+    ctx.strokeStyle = lineCol; ctx.lineWidth = 1.8; ctx.lineJoin = "round"; ctx.stroke();
+    const n = past.at(-1);
+    ctx.fillStyle = lineCol + "40"; ctx.beginPath(); ctx.arc(x(n.x), y(n.v), 7, 0, 7); ctx.fill();
+    ctx.fillStyle = lineCol; ctx.beginPath(); ctx.arc(x(n.x), y(n.v), 3, 0, 7); ctx.fill();
+  }
+
+  // 逐小时降水
+  const hours = past.filter(p => !p.now).concat(future);
+  const pmax = Math.max(0, ...hours.map(p => p.p));
+  const bw = Math.max(2, g.x1 / 24 * .6);
+  if (pmax > 0) hours.forEach(p => {
+    if (!p.p) return;
+    const ph = p.p / pmax * (g.vB - g.vT - 4);
+    ctx.fillStyle = color("--rain"); ctx.globalAlpha = p.x <= nowH ? .8 : .3;
+    ctx.fillRect(Math.round(x(p.x) - bw / 2), Math.round(g.vB - ph), Math.round(bw), Math.round(ph));
+    ctx.globalAlpha = 1;
+  });
+  ctx.textAlign = "left"; ctx.fillStyle = color("--ink-3");
+  ctx.fillText(pmax ? `${f1(pmax)}mm` : "0mm", g.x1 + 8, g.vT + 6);
+
+  // 十字线
+  ctx.lineWidth = 1;
+  let pt = past.at(-1) || future[0];
+  if (S.hover) {
+    const hh = clamp(S.hover.x / g.x1 * 24, 0, 24);
+    const pts = past.concat(future);
+    pt = pts.reduce((a, b) => Math.abs(b.x - hh) < Math.abs(a.x - hh) ? b : a);
+    const xx = Math.round(x(pt.x)) + .5;
+    ctx.strokeStyle = "rgba(255,255,255,.4)"; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(xx, g.pT); ctx.lineTo(xx, g.vB); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, Math.round(y(pt.v)) + .5); ctx.lineTo(g.x1, Math.round(y(pt.v)) + .5); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x(pt.x), y(pt.v), 3, 0, 7); ctx.fill();
+    label(ctx, deg(pt.v), g.x1 + 2, y(pt.v), "#3a3a42", "#fff");
+    label(ctx, hhmm(pt), clamp(xx, 30, g.x1 - 30), g.vB + 13, "#3a3a42", "#fff", "center");
+  }
+  const chg = pc != null && pt ? pt.v - pc : null;
+  const fut = pt && pt.x > nowH;
+  $("#legend").innerHTML = pt
+    ? `<div class="l1"><span class="d">${addDays(todayOf(L), pt.x + DAY_START >= 24 ? 1 : 0).replace(/-/g, "/")} ${hhmm(pt)}${pt.now ? " · " + t("latest") : fut ? " · " + t("forecast") : ""}</span>` +
+      `${t("temp")}<b class="${dirOf(chg)}">${deg(pt.v)}</b>${t("vsPrev")}<b class="${dirOf(chg)}">${signed(chg)}</b>` +
+      `<span class="rain">${t("precip")}</span><b class="rain">${pt.now ? "—" : f1(pt.p) + " mm"}</b></div>` +
+      `<div class="l2">${t("prevClose")}<b>${deg(pc)}</b>${t("intraNote")}</div>`
+    : "";
+}
+
+function hhmm(p) {
+  const h = Math.floor(p.x), m = Math.round((p.x - h) * 60);
+  return `${pad2((h + DAY_START) % 24)}:${pad2(m)}`;
+}
+
+// ---- 交互：悬停、拖动平移、滚轮缩放、键盘 ----
+cv.addEventListener("pointermove", e => {
+  const r = cv.getBoundingClientRect();
+  const p = { x: e.clientX - r.left, y: e.clientY - r.top };
+  if (S.drag && S.views[S.mode]) {
+    const data = series(sel(), S.mode), v = view(data.length);
+    const cw = geom().x1 / v.count;
+    S.views[S.mode].offset = S.drag.offset + (p.x - S.drag.x) / cw;
+  }
+  S.hover = p.x < geom().x1 ? p : null;
+  draw();
+});
+cv.addEventListener("pointerleave", () => { S.hover = null; draw(); });
+cv.addEventListener("pointerdown", e => {
+  if (S.mode === "intra" || MODES[S.mode].fixed || !sel()) return;
+  cv.setPointerCapture(e.pointerId);
+  const r = cv.getBoundingClientRect();
+  view(series(sel(), S.mode).length);
+  S.drag = { x: e.clientX - r.left, offset: S.views[S.mode].offset };
+  cv.style.cursor = "grabbing";
+});
+cv.addEventListener("pointerup", () => { S.drag = null; cv.style.cursor = ""; });
+cv.addEventListener("wheel", e => {
+  if (S.mode === "intra" || MODES[S.mode].fixed || !sel()) return;
+  e.preventDefault();
+  const n = series(sel(), S.mode).length, v = view(n), g = geom();
+  const mx = clamp(e.clientX - cv.getBoundingClientRect().left, 0, g.x1);
+  const anchor = v.start + mx / (g.x1 / v.count);
+  const m = MODES[S.mode];
+  const count = clamp(v.count * Math.exp(e.deltaY * .0015), m.min, m.max);
+  const start = anchor - mx / (g.x1 / count);
+  S.views[S.mode] = { count, offset: n - start - count };
+  draw();
+}, { passive: false });
+cv.addEventListener("keydown", e => {
+  if (S.mode === "intra" || MODES[S.mode].fixed || !sel()) return;
+  const n = series(sel(), S.mode).length, v = view(n), st = S.views[S.mode];
+  const step = Math.max(1, Math.round(v.count / (e.shiftKey ? 3 : 12)));
+  if (e.key === "ArrowLeft") st.offset += step;
+  else if (e.key === "ArrowRight") st.offset -= step;
+  else if (e.key === "+" || e.key === "=") st.count /= 1.25;
+  else if (e.key === "-") st.count *= 1.25;
+  else if (e.key === "0") { st.count = MODES[S.mode].count; st.offset = 0; }
+  else return;
+  e.preventDefault();
+  draw();
+});
+
+// ================= 页面 =================
+function setMode(m) {
+  S.mode = m;
+  S.hover = null;
+  store.set(K.prefs, { ...S.prefs, sel: S.sel, mode: m });
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.mode === m)));
+  renderHint();
+  draw();
+}
+
+function renderHint() {
+  const c = sel(), ld = c && S.histLoading[c.id];
+  $("#hint").textContent = ld
+    ? t("loading", { y: HIST_YEAR, d: ld.done, n: ld.total || "…" })
+    : S.mode === "intra" ? t("hintIntra")
+    : MODES[S.mode].fixed ? t("hintYear", { y: HIST_YEAR })
+    : t("hintK");
+}
+
+function applyLang() {
+  const lang = S.prefs.lang;
+  document.documentElement.lang = HTML_LANG[lang];
+  // 中文红涨绿跌，日文和英文绿涨红跌
+  document.documentElement.classList.toggle("swap", lang !== "zh");
+  document.title = t("title");
+  document.querySelectorAll("[data-t]").forEach(el => { el.textContent = t(el.dataset.t); });
+  document.querySelectorAll("[data-t-ph]").forEach(el => { el.placeholder = t(el.dataset.tPh); });
+  document.querySelectorAll("[data-t-aria]").forEach(el => el.setAttribute("aria-label", t(el.dataset.tAria)));
+  document.querySelectorAll(".tabs button").forEach(b => { b.textContent = t("tabs")[b.dataset.mode]; });
+  $("#lang").innerHTML = Object.entries(LANGS).map(([k, name]) =>
+    `<button type="button" role="radio" data-lang="${k}" lang="${HTML_LANG[k]}" aria-checked="${k === lang}" tabindex="${k === lang ? 0 : -1}">${name}</button>`).join("");
+  resetColors();
+}
+
+function setLang(lang, focus) {
+  if (!LANGS[lang]) return;
+  S.prefs.lang = lang;
+  store.set(K.prefs, { ...S.prefs, sel: S.sel, mode: S.mode });
+  applyLang();
+  renderAll();
+  if (focus) $(`#lang [data-lang="${lang}"]`).focus();
+}
+
+function renderAll() {
+  renderList();
+  renderQuote();
+  renderHint();
+  draw();
+}
+
+document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
+$(".tabs").addEventListener("keydown", e => {
+  const keys = Object.keys(MODES), i = keys.indexOf(S.mode);
+  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+  const m = keys[(i + (e.key === "ArrowRight" ? 1 : keys.length - 1)) % keys.length];
+  setMode(m);
+  document.querySelector(`.tabs button[data-mode="${m}"]`).focus();
+});
+
+$("#list").addEventListener("click", e => {
+  const row = e.target.closest(".row");
+  if (!row) return;
+  if (e.target.closest(".del")) removeCity(row.dataset.id);
+  else select(row.dataset.id, true);
+});
+$("#list").addEventListener("keydown", e => {
+  const i = S.watch.findIndex(c => c.id === S.sel);
+  if (e.key === "ArrowDown" && i < S.watch.length - 1) { e.preventDefault(); select(S.watch[i + 1].id, true); }
+  else if (e.key === "ArrowUp" && i > 0) { e.preventDefault(); select(S.watch[i - 1].id, true); }
+  else if ((e.key === "Delete" || e.key === "Backspace") && S.sel) { e.preventDefault(); removeCity(S.sel); $(`.row[data-id="${S.sel}"]`)?.focus(); }
+});
+
+$("#lang").addEventListener("click", e => {
+  const b = e.target.closest("[data-lang]");
+  if (b) setLang(b.dataset.lang);
+});
+$("#lang").addEventListener("keydown", e => {
+  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+  const keys = Object.keys(LANGS), i = keys.indexOf(S.prefs.lang);
+  setLang(keys[(i + (e.key === "ArrowRight" ? 1 : keys.length - 1)) % keys.length], true);
+});
+
+async function refresh() {
+  try {
+    await fetchLive(S.watch);
+    S.online = true;
+    bump();
+  } catch (e) {
+    console.error(e);
+    if (S.online) toast(t("offlineToast"));
+    S.online = false;
+  }
+  renderAll();
+  if (sel()) ensureHist(sel());
+}
+
+function init() {
+  S.watch = store.get(K.watch, null) || DEFAULT_WATCH.map(c => ({ ...c }));
+  const p = store.get(K.prefs, {});
+  const nav = (navigator.language || "").toLowerCase();
+  // 用过旧版（存过设置）的人保持中文；第一次打开的人跟随浏览器语言
+  const firstVisit = !p.sel && !p.mode;
+  S.prefs.lang = LANGS[p.lang] ? p.lang
+    : !firstVisit ? "zh" : nav.startsWith("ja") ? "ja" : nav.startsWith("zh") ? "zh" : "en";
+  // 旧版只存了一种语言的名字：默认城市直接补全，搜索加的城市后台去查
+  const defaults = Object.fromEntries(DEFAULT_WATCH.map(c => [c.id, c]));
+  const missing = [];
+  S.watch = S.watch.map(c => {
+    if (c.names) return c;
+    if (defaults[c.id]) return { ...c, names: defaults[c.id].names, countries: defaults[c.id].countries };
+    missing.push(c);
+    return c;
+  });
+  saveWatch();
+  missing.forEach(async c => {
+    const loc = await fetchNames(c.id.slice(1));
+    if (!Object.keys(loc.names).length) return;
+    c.names = loc.names;
+    c.countries = loc.countries;
+    saveWatch();
+    renderAll();
+  });
+  S.sel = S.watch.some(c => c.id === p.sel) ? p.sel : S.watch[0]?.id || null;
+  S.mode = MODES[p.mode] ? p.mode : "day";
+  const cached = store.get(K.live, {});
+  for (const c of S.watch) if (cached[c.id]) S.live[c.id] = cached[c.id];
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("tq.hist.")) localStorage.removeItem(k);
+    }
+  } catch {}
+  Promise.all(S.watch.map(c => loadHist(c.id))).then(() => { bump(); renderAll(); });
+  idb.keys().then(ks => ks.forEach(k => { if (!S.watch.some(c => c.id === k)) idb.del(k); }));
+  applyLang();
+  setMode(S.mode);
+  renderAll();
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+  setInterval(() => { if (!document.hidden) renderQuote(); }, 30000);
+  document.addEventListener("visibilitychange", () => {
+    const L = sel() && S.live[S.sel];
+    if (!document.hidden && L && Date.now() - L.at > REFRESH_MS) refresh();
+  });
+}
+init();
+</script>
+</body>
+</html>
